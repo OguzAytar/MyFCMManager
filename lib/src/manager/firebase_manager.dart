@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:ogzfirebasemanager/src/interfaces/index.dart';
 import 'package:ogzfirebasemanager/src/models/index.dart';
@@ -567,5 +568,41 @@ class FcmManager {
     } catch (e) {
       debugPrint('❌ Analytics event gönderme hatası: $e');
     }
+  }
+
+  /// Test amaçlı token refresh handler'ını test etmek için
+  ///
+  /// **NOT:** Bu metod sadece test amaçlı eklenmiştir!
+  /// Production kodunda kullanılmamalıdır.
+  ///
+  /// **Parametreler:**
+  /// - [token]: Test edilecek token
+  ///
+  /// **Example:**
+  /// ```dart
+  /// // Test içinde kullanım
+  /// await manager.testTokenRefresh('test_token_123');
+  /// ```
+  @visibleForTesting
+  Future<void> testTokenRefresh(String token) async {
+    await _handleTokenRefresh(token);
+  }
+
+  /// Test amaçlı mevcut token'ı almak için
+  ///
+  /// **NOT:** Bu metod sadece test amaçlı eklenmiştir!
+  /// Production kodunda kullanılmamalıdır.
+  ///
+  /// **Returns:**
+  /// Mevcut cache'lenmiş token
+  ///
+  /// **Example:**
+  /// ```dart
+  /// // Test içinde kullanım
+  /// final currentToken = manager.testGetCurrentToken();
+  /// ```
+  @visibleForTesting
+  String? testGetCurrentToken() {
+    return _currentToken;
   }
 }
