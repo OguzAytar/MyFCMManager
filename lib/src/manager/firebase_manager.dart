@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -144,6 +145,7 @@ class FcmManager {
     // İlk token'ı işle
     final initialToken = await getToken();
     if (initialToken != null) {
+      log(initialToken);
       await _handleTokenRefresh(initialToken);
     }
   }
