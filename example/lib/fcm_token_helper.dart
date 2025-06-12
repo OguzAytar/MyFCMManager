@@ -47,6 +47,12 @@ class FcmTokenHelper {
         return TokenRefreshResult(success: false, token: null, reason: 'User not remembered');
       }
 
+      // FCM Manager initialize kontrolü
+      if (!FcmManager().isInitialized) {
+        log('⚠️ FCM Manager initialize edilmemiş, splash\'da initialize ediliyor');
+        return TokenRefreshResult(success: false, token: null, reason: 'FCM Manager not initialized');
+      }
+
       // Mevcut cache'lenmiş token'ı kontrol et
       final cachedToken = FcmManager().getCachedToken();
       if (cachedToken != null) {
@@ -96,6 +102,12 @@ class FcmTokenHelper {
   Future<TokenRefreshResult> handlePostLoginTokenRefresh({required String userId, bool forceRefresh = false}) async {
     try {
       log('👤 Post-login token refresh - User: $userId, Force: $forceRefresh');
+
+      // FCM Manager initialize kontrolü
+      if (!FcmManager().isInitialized) {
+        log('⚠️ FCM Manager initialize edilmemiş');
+        return TokenRefreshResult(success: false, token: null, reason: 'FCM Manager not initialized', userId: userId);
+      }
 
       String? token;
 

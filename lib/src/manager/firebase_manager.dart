@@ -46,8 +46,16 @@ class FcmManager {
   /// Factory constructor - her çağrıldığında aynı instance'ı döner
   factory FcmManager() => _instance;
 
+  /// Singleton instance'a direct erişim
+  /// Debug ve test amaçlı kullanım için
+  static FcmManager get instance => _instance;
+
   /// Private constructor - sadece içeriden çağrılabilir
   FcmManager._internal();
+
+  // Initialization durumu
+  /// FCM Manager'ın initialize edilip edilmediğini takip eder
+  bool _isInitialized = false;
 
   // FCM dinleyicileri için subscription'lar
   /// FCM token değişikliklerini dinleyen subscription
@@ -120,6 +128,12 @@ class FcmManager {
     FcmPreferencesHandler? preferencesHandler,
     void Function(FcmMessage message)? onNotificationTap,
   }) async {
+    // Eğer zaten initialize edilmişse tekrar initialize etme
+    if (_isInitialized) {
+      debugPrint('⚠️ FCM Manager zaten initialize edilmiş');
+      return;
+    }
+
     // Handler'ları kaydet
     _tokenHandler = tokenHandler;
     _messageHandler = messageHandler;
@@ -149,6 +163,10 @@ class FcmManager {
       log(initialToken);
       await _handleTokenRefresh(initialToken);
     }
+
+    // Initialize durumunu işaretle
+    _isInitialized = true;
+    debugPrint('✅ FCM Manager başarıyla initialize edildi');
   }
 
   /// FCM kaynaklarını temizler ve dinleyicileri iptal eder
@@ -185,8 +203,6 @@ class FcmManager {
   /// - [token]: Yeni FCM token'ı
   Future<void> _handleTokenRefresh(String token) async {
     try {
-      debugPrint('🔄 FCM Token güncellendi: ${token.substring(0, 20)}...');
-
       final oldToken = _currentToken;
       _currentToken = token;
 
@@ -194,6 +210,7 @@ class FcmManager {
         // Eğer eski token varsa onTokenRefreshed'i çağır
         if (oldToken != null && oldToken != token) {
           await _tokenHandler!.onTokenRefreshed(oldToken, token);
+          debugPrint('🔄 FCM Token güncellendi: ${token.substring(0, 20)}...');
         } else {
           // İlk token veya aynı token ise onTokenReceived'i çağır
           await _tokenHandler!.onTokenReceived(token);
@@ -603,6 +620,12 @@ class FcmManager {
   /// ```
   Future<String?> refreshToken() async {
     try {
+      // Initialize kontrolü
+      if (!_isInitialized) {
+        debugPrint('⚠️ FCM Manager initialize edilmemiş, önce initialize() çağırın');
+        return null;
+      }
+
       // Firebase'den güncel token'ı al
       final newToken = await getToken();
 
@@ -639,6 +662,12 @@ class FcmManager {
   /// ```
   Future<String?> forceRefreshToken() async {
     try {
+      // Initialize kontrolü
+      if (!_isInitialized) {
+        debugPrint('⚠️ FCM Manager initialize edilmemiş, önce initialize() çağırın');
+        return null;
+      }
+
       // Firebase'den force refresh ile yeni token al
       await _fcmService.deleteToken(); // Mevcut token'ı sil
       final newToken = await _fcmService.getToken(); // Yeni token oluştur
@@ -695,6 +724,23 @@ class FcmManager {
   bool hasValidToken() {
     return _currentToken != null && _currentToken!.isNotEmpty;
   }
+
+  /// FCM Manager'ın initialize edilip edilmediğini kontrol eder
+  ///
+  /// **Returns:**
+  /// true - Initialize edilmiş
+  /// false - Henüz initialize edilmemiş
+  ///
+  /// **Example:**
+  /// ```dart
+  /// if (FcmManager().isInitialized) {
+  ///   // Manager hazır, işlemlere devam et
+  /// } else {
+  ///   // Önce initialize et
+  ///   await FcmManager().initialize(tokenHandler: handler);
+  /// }
+  /// ```
+  bool get isInitialized => _isInitialized;
 
   /// Test amaçlı token refresh handler'ını test etmek için
   ///
