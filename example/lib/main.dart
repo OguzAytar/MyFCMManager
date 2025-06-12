@@ -1,11 +1,20 @@
 import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:ogzfirebasemanager/ogzfirebasemanager.dart';
 
+import 'token_handler_example.dart';
+import 'token_management_page.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+
+  // Token servisini başlat
+  TokenService().initialize();
+  await TokenService().startFcm();
+
   runApp(MyApp());
 }
 
@@ -22,6 +31,7 @@ class MyApp extends StatelessWidget {
         '/profile': (context) => ProfilePage(),
         '/chat': (context) => ChatPage(),
         '/settings': (context) => SettingsPage(),
+        '/token-management': (context) => const TokenManagementPage(),
       },
     );
   }
@@ -55,7 +65,7 @@ class MyTokenHandler implements FcmTokenHandler {
   Future<void> onTokenRefreshed(String oldToken, String newToken) async {
     debugPrint('🔄 Token yenilendi: ${oldToken.substring(0, 20)}... -> ${newToken.substring(0, 20)}...');
     onEventLog?.call('Token refreshed: ${oldToken.substring(0, 20)}... -> ${newToken.substring(0, 20)}...');
-    
+
     // Yeni token'ı backend'e gönder
     await onTokenReceived(newToken);
   }
@@ -134,7 +144,7 @@ class _MyHomePageState extends State<MyHomePage> {
   String? _fcmToken;
   bool _notificationsEnabled = true;
   final List<String> _eventLog = [];
-  
+
   StreamSubscription<String>? _tokenSubscription;
 
   late MyTokenHandler _tokenHandler;
