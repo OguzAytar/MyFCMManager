@@ -199,6 +199,7 @@ class FcmManager {
         }
       }
     } catch (e) {
+      debugPrint('❌ Token refresh handler hatası: $e');
       rethrow;
     }
   }
