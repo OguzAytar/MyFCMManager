@@ -1,6 +1,5 @@
 import 'dart:async';
 
-
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:ogzfirebasemanager/src/models/index.dart';
 
@@ -80,12 +79,17 @@ class FcmService {
     _onTokenRefreshController.close();
   }
 
+  /// FCM token'ını siler (logout için)
+  Future<void> deleteToken() async {
+    try {
+      await _firebaseMessaging.deleteToken();
+    } catch (e) {
+      // Token silme hatası - sessizce devam et
+    }
+  }
+
   // RemoteMessage'dan FcmMessage'a dönüştürme
   FcmMessage _toFcmMessage(RemoteMessage message) {
-    return FcmMessage(
-      title: message.notification?.title,
-      body: message.notification?.body,
-      data: message.data,
-    );
+    return FcmMessage(title: message.notification?.title, body: message.notification?.body, data: message.data);
   }
 }

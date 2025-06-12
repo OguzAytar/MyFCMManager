@@ -145,6 +145,7 @@ class FcmManager {
     // İlk token'ı işle
     final initialToken = await getToken();
     if (initialToken != null) {
+      //TODO kaldırılacak
       log(initialToken);
       await _handleTokenRefresh(initialToken);
     }
@@ -571,6 +572,128 @@ class FcmManager {
     } catch (e) {
       debugPrint('❌ Analytics event gönderme hatası: $e');
     }
+  }
+
+  /// Manuel token refresh tetikler
+  ///
+  /// Bu metod özellikle splash screen'de veya remember me durumlarında
+  /// kullanıcı login olmadan önce token'ı refresh etmek için kullanılır.
+  ///
+  /// **Use Cases:**
+  /// - Splash screen'de stored user varsa token refresh
+  /// - Remember me aktifse automatic token refresh
+  /// - User login olduktan sonra token'ı güncelleme
+  /// - Background'dan foreground'a geçişte token kontrolü
+  ///
+  /// **Returns:**
+  /// Yeni token string'i veya null (token alınamazsa)
+  ///
+  /// **Example:**
+  /// ```dart
+  /// // Splash screen'de kullanım
+  /// if (userIsRemembered) {
+  ///   final token = await FcmManager().refreshToken();
+  ///   if (token != null) {
+  ///     // Token başarıyla refresh edildi, ana sayfaya git
+  ///   }
+  /// }
+  ///
+  /// // Login sonrası kullanım
+  /// await FcmManager().refreshToken();
+  /// ```
+  Future<String?> refreshToken() async {
+    try {
+      // Firebase'den güncel token'ı al
+      final newToken = await getToken();
+
+      if (newToken != null) {
+        // Token refresh handler'ını çağır
+        await _handleTokenRefresh(newToken);
+        return newToken;
+      }
+
+      return null;
+    } catch (e) {
+      debugPrint('❌ Manuel token refresh hatası: $e');
+      return null;
+    }
+  }
+
+  /// Token'ı force refresh eder (Firebase'den yeni token ister)
+  ///
+  /// Bu metod Firebase'den yeni bir token oluşturulmasını zorunlu kılar.
+  /// Normal refresh'den farkı, cache'lenmiş token'ı değil yeni token üretir.
+  ///
+  /// **Use Cases:**
+  /// - Token corruption şüphesi
+  /// - Güvenlik gerekliliği
+  /// - Testing amaçlı yeni token alma
+  ///
+  /// **Returns:**
+  /// Yeni üretilen token string'i veya null
+  ///
+  /// **Example:**
+  /// ```dart
+  /// // Güvenlik gerekliliği için yeni token
+  /// final freshToken = await FcmManager().forceRefreshToken();
+  /// ```
+  Future<String?> forceRefreshToken() async {
+    try {
+      // Firebase'den force refresh ile yeni token al
+      await _fcmService.deleteToken(); // Mevcut token'ı sil
+      final newToken = await _fcmService.getToken(); // Yeni token oluştur
+
+      if (newToken != null) {
+        await _handleTokenRefresh(newToken);
+        return newToken;
+      }
+
+      return null;
+    } catch (e) {
+      debugPrint('❌ Force token refresh hatası: $e');
+      return null;
+    }
+  }
+
+  /// Mevcut cache'lenmiş token'ı döndürür
+  ///
+  /// Bu metod network çağrısı yapmadan cache'lenmiş token'ı döndürür.
+  /// Hızlı erişim için kullanılır.
+  ///
+  /// **Returns:**
+  /// Cache'lenmiş token veya null
+  ///
+  /// **Example:**
+  /// ```dart
+  /// final cachedToken = FcmManager().getCachedToken();
+  /// if (cachedToken != null) {
+  ///   // Cache'den token kullan
+  /// } else {
+  ///   // Token'ı Firebase'den al
+  ///   final token = await FcmManager().getToken();
+  /// }
+  /// ```
+  String? getCachedToken() {
+    return _currentToken;
+  }
+
+  /// Token'ın geçerli olup olmadığını kontrol eder
+  ///
+  /// **Returns:**
+  /// true - Token mevcutsa ve boş değilse
+  /// false - Token yoksa veya boşsa
+  ///
+  /// **Example:**
+  /// ```dart
+  /// if (FcmManager().hasValidToken()) {
+  ///   // Token var, işlemlere devam et
+  /// } else {
+  ///   // Token al
+  ///   await FcmManager().refreshToken();
+  /// }
+  /// ```
+  bool hasValidToken() {
+    return _currentToken != null && _currentToken!.isNotEmpty;
   }
 
   /// Test amaçlı token refresh handler'ını test etmek için
