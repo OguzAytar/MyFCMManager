@@ -6,6 +6,7 @@ import 'package:ogzfirebasemanager/ogzfirebasemanager.dart';
 
 import 'token_handler_example.dart';
 import 'token_management_page.dart';
+import 'topic_status_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -32,6 +33,7 @@ class MyApp extends StatelessWidget {
         '/chat': (context) => ChatPage(),
         '/settings': (context) => SettingsPage(),
         '/token-management': (context) => const TokenManagementPage(),
+        '/topic-status': (context) => const TopicStatusPage(),
       },
     );
   }
@@ -417,7 +419,24 @@ class SettingsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text('Settings')),
-      body: Center(child: Text('Settings Page\n\nBu sayfa bildirimle yönlendirme testi için.')),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('Settings Page\n\nBu sayfa bildirimle yönlendirme testi için.'),
+            SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () => Navigator.pushNamed(context, '/token-management'),
+              child: Text('Token Management'),
+            ),
+            SizedBox(height: 10),
+            ElevatedButton(
+              onPressed: () => Navigator.pushNamed(context, '/topic-status'),
+              child: Text('Topic Status Control'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

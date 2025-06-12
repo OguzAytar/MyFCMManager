@@ -88,6 +88,10 @@ class FcmManager {
   /// Kullanıcı bildirim tercihlerini güncellemek için kullanılır
   FcmPreferencesHandler? _preferencesHandler;
 
+  /// Topic yönetimi için kullanıcı tarafından implement edilen handler
+  /// Topic abone/abonelik çıkma işlemleri için çağrılır
+  FcmTopicHandler? _topicHandler;
+
   // Callback fonksiyonları (basit kullanım için)
   /// Basit kullanım için bildirime tıklama callback'i
   /// Interface kullanmak istemeyenler için alternatif yöntem
@@ -108,6 +112,7 @@ class FcmManager {
   /// - [messageHandler]: Mesaj işlemleri için handler (opsiyonel)
   /// - [analyticsHandler]: Analytics eventi için handler (opsiyonel)
   /// - [preferencesHandler]: Notification preferences için handler (opsiyonel)
+  /// - [topicHandler]: Topic yönetimi için handler (opsiyonel)
   /// - [onNotificationTap]: Basit bildirim tıklama callback'i (opsiyonel)
   ///
   /// **Throws:**
@@ -118,6 +123,7 @@ class FcmManager {
   /// await FcmManager().initialize(
   ///   tokenHandler: MyTokenHandler(),
   ///   messageHandler: MyMessageHandler(),
+  ///   topicHandler: MyTopicHandler(),
   ///   onNotificationTap: (message) => print('Tapped: ${message.title}'),
   /// );
   /// ```
@@ -126,6 +132,7 @@ class FcmManager {
     FcmMessageHandler? messageHandler,
     FcmAnalyticsHandler? analyticsHandler,
     FcmPreferencesHandler? preferencesHandler,
+    FcmTopicHandler? topicHandler,
     void Function(FcmMessage message)? onNotificationTap,
   }) async {
     // Eğer zaten initialize edilmişse tekrar initialize etme
@@ -139,6 +146,7 @@ class FcmManager {
     _messageHandler = messageHandler;
     _analyticsHandler = analyticsHandler;
     _preferencesHandler = preferencesHandler;
+    _topicHandler = topicHandler;
     _onNotificationTap = onNotificationTap;
 
     // FCM servisini başlat
@@ -479,7 +487,9 @@ class FcmManager {
       if (token != null && _tokenHandler != null) {
         final success = await _tokenHandler!.onTokenDelete(token);
         if (success) {
-          debugPrint('✅ Logout başarılı, token silindi');
+          // Topic cache'ini temizle
+          _fcmService.clearTopicCache();
+          debugPrint('✅ Logout başarılı, token silindi ve topic cache temizlendi');
           return true;
         }
       }
@@ -741,6 +751,373 @@ class FcmManager {
   /// }
   /// ```
   bool get isInitialized => _isInitialized;
+
+  // ==================== TOPIC MANAGEMENT ====================
+
+  /// Bir topic'e abone ol
+  ///
+  /// FCM topic'lere abone olarak belirli kategorilerdeki bildirimleri alabilirsiniz.
+  /// Topic'ler server-side'da tanımlanır ve push notification gönderimi için kullanılır.
+  ///
+  /// **Parameters:**
+  /// - [topic]: Abone olunacak topic adı (örn: 'news', 'sports', 'weather')
+  ///
+  /// **Returns:**
+  /// `true` - Abonelik başarılı
+  /// `false` - Abonelik başarısız veya FCM Manager initialize edilmemiş
+  ///
+  /// **Example:**
+  /// ```dart
+  /// // Haber topic'ine abone ol
+  /// final success = await FcmManager().subscribeToTopic('news');
+  /// if (success) {
+  ///   print('Haber bildirimlerine abone olundu');
+  /// }
+  ///
+  /// // Spor topic'ine abone ol
+  /// await FcmManager().subscribeToTopic('sports');
+  /// ```
+  ///
+  /// **Topic Naming Rules:**
+  /// - Topic adları sadece [a-zA-Z0-9-_.~%] karakterlerini içerebilir
+  /// - Maksimum 900 karaktere kadar olabilir
+  /// - `/topics/` prefix'i otomatik eklenir
+  ///
+  /// **Use Cases:**
+  /// - Kategori bazlı bildirimler (haberler, spor, hava durumu)
+  /// - Bölge bazlı bildirimler (şehir, ülke)
+  /// - Kullanıcı ilgi alanları
+  Future<bool> subscribeToTopic(String topic) async {
+    try {
+      // Initialize kontrolü
+      if (!_isInitialized) {
+        debugPrint('⚠️ FCM Manager initialize edilmemiş, topic subscription başarısız');
+        return false;
+      }
+
+      debugPrint('📋 Topic\'e abone olunuyor: $topic');
+      
+      // FCM service'den topic'e abone ol
+      final success = await _fcmService.subscribeToTopic(topic);
+      
+      // Topic handler'ı çağır
+      if (_topicHandler != null) {
+        await _topicHandler!.onTopicSubscribed(topic, success);
+      }
+
+      if (success) {
+        debugPrint('✅ Topic aboneliği başarılı: $topic');
+      } else {
+        debugPrint('❌ Topic aboneliği başarısız: $topic');
+      }
+
+      return success;
+    } catch (e) {
+      debugPrint('❌ Topic subscription hatası: $e');
+      
+      // Hata durumunda da handler'ı bilgilendir
+      if (_topicHandler != null) {
+        await _topicHandler!.onTopicSubscribed(topic, false);
+      }
+      
+      return false;
+    }
+  }
+
+  /// Bir topic'ten abonelikten çık
+  ///
+  /// Artık belirli bir topic'ten bildirim almak istemediğinizde kullanılır.
+  ///
+  /// **Parameters:**
+  /// - [topic]: Abonelikten çıkılacak topic adı
+  ///
+  /// **Returns:**
+  /// `true` - Abonelikten çıkma başarılı
+  /// `false` - İşlem başarısız
+  ///
+  /// **Example:**
+  /// ```dart
+  /// // Haber topic'inden abonelikten çık
+  /// final success = await FcmManager().unsubscribeFromTopic('news');
+  /// if (success) {
+  ///   print('Haber bildirimlerinden abonelikten çıkıldı');
+  /// }
+  /// ```
+  Future<bool> unsubscribeFromTopic(String topic) async {
+    try {
+      // Initialize kontrolü
+      if (!_isInitialized) {
+        debugPrint('⚠️ FCM Manager initialize edilmemiş, topic unsubscription başarısız');
+        return false;
+      }
+
+      debugPrint('📋 Topic\'ten abonelikten çıkılıyor: $topic');
+      
+      // FCM service'den topic'ten abonelikten çık
+      final success = await _fcmService.unsubscribeFromTopic(topic);
+      
+      // Topic handler'ı çağır
+      if (_topicHandler != null) {
+        await _topicHandler!.onTopicUnsubscribed(topic, success);
+      }
+
+      if (success) {
+        debugPrint('✅ Topic abonelikten çıkma başarılı: $topic');
+      } else {
+        debugPrint('❌ Topic abonelikten çıkma başarısız: $topic');
+      }
+
+      return success;
+    } catch (e) {
+      debugPrint('❌ Topic unsubscription hatası: $e');
+      
+      // Hata durumunda da handler'ı bilgilendir
+      if (_topicHandler != null) {
+        await _topicHandler!.onTopicUnsubscribed(topic, false);
+      }
+      
+      return false;
+    }
+  }
+
+  /// Birden fazla topic'e aynı anda abone ol
+  ///
+  /// Performans optimizasyonu için birden fazla topic'e aynı anda abone olmanızı sağlar.
+  ///
+  /// **Parameters:**
+  /// - [topics]: Abone olunacak topic listesi
+  ///
+  /// **Returns:**
+  /// Map<String, bool> - Her topic için abonelik sonucu
+  ///
+  /// **Example:**
+  /// ```dart
+  /// final results = await FcmManager().subscribeToMultipleTopics([
+  ///   'news',
+  ///   'sports', 
+  ///   'weather',
+  ///   'alerts'
+  /// ]);
+  ///
+  /// results.forEach((topic, success) {
+  ///   print('$topic: ${success ? "Başarılı" : "Başarısız"}');
+  /// });
+  /// ```
+  Future<Map<String, bool>> subscribeToMultipleTopics(List<String> topics) async {
+    try {
+      // Initialize kontrolü
+      if (!_isInitialized) {
+        debugPrint('⚠️ FCM Manager initialize edilmemiş');
+        return Map<String, bool>.fromIterable(topics, value: (_) => false);
+      }
+
+      debugPrint('📋 Çoklu topic aboneliği başlatıldı: ${topics.join(", ")}');
+      
+      // FCM service'den bulk subscribe
+      final results = await _fcmService.subscribeToMultipleTopics(topics);
+      
+      // Topic handler'ı çağır
+      if (_topicHandler != null) {
+        await _topicHandler!.onBulkTopicOperation(results, true);
+      }
+
+      final successCount = results.values.where((success) => success).length;
+      debugPrint('✅ Çoklu topic aboneliği tamamlandı: $successCount/${topics.length} başarılı');
+
+      return results;
+    } catch (e) {
+      debugPrint('❌ Çoklu topic subscription hatası: $e');
+      final failedResults = Map<String, bool>.fromIterable(topics, value: (_) => false);
+      
+      // Hata durumunda da handler'ı bilgilendir
+      if (_topicHandler != null) {
+        await _topicHandler!.onBulkTopicOperation(failedResults, true);
+      }
+      
+      return failedResults;
+    }
+  }
+
+  /// Birden fazla topic'ten aynı anda abonelikten çık
+  ///
+  /// **Parameters:**
+  /// - [topics]: Abonelikten çıkılacak topic listesi
+  ///
+  /// **Returns:**
+  /// Map<String, bool> - Her topic için işlem sonucu
+  ///
+  /// **Example:**
+  /// ```dart
+  /// final results = await FcmManager().unsubscribeFromMultipleTopics([
+  ///   'news', 'sports'
+  /// ]);
+  /// ```
+  Future<Map<String, bool>> unsubscribeFromMultipleTopics(List<String> topics) async {
+    try {
+      // Initialize kontrolü
+      if (!_isInitialized) {
+        debugPrint('⚠️ FCM Manager initialize edilmemiş');
+        return Map<String, bool>.fromIterable(topics, value: (_) => false);
+      }
+
+      debugPrint('📋 Çoklu topic abonelikten çıkma başlatıldı: ${topics.join(", ")}');
+      
+      // FCM service'den bulk unsubscribe
+      final results = await _fcmService.unsubscribeFromMultipleTopics(topics);
+      
+      // Topic handler'ı çağır
+      if (_topicHandler != null) {
+        await _topicHandler!.onBulkTopicOperation(results, false);
+      }
+
+      final successCount = results.values.where((success) => success).length;
+      debugPrint('✅ Çoklu topic abonelikten çıkma tamamlandı: $successCount/${topics.length} başarılı');
+
+      return results;
+    } catch (e) {
+      debugPrint('❌ Çoklu topic unsubscription hatası: $e');
+      final failedResults = Map<String, bool>.fromIterable(topics, value: (_) => false);
+      
+      // Hata durumunda da handler'ı bilgilendir
+      if (_topicHandler != null) {
+        await _topicHandler!.onBulkTopicOperation(failedResults, false);
+      }
+      
+      return failedResults;
+    }
+  }
+
+  // ==================== TOPIC SUBSCRIPTION STATUS ====================
+
+  /// Bir topic'e abone olup olmadığını kontrol eder
+  ///
+  /// **Parameters:**
+  /// - [topic]: Kontrol edilecek topic adı
+  ///
+  /// **Returns:**
+  /// true - Abone, false - Abone değil veya FCM initialize edilmemiş
+  ///
+  /// **Note:**
+  /// Bu metod local cache'i kontrol eder. Firebase'den gerçek zamanlı
+  /// subscription durumu almaz çünkü Firebase böyle bir API sağlamaz.
+  ///
+  /// **Example:**
+  /// ```dart
+  /// if (FcmManager().isSubscribedToTopic('news')) {
+  ///   print('News topic\'ine abone');
+  /// } else {
+  ///   print('News topic\'ine abone değil');
+  /// }
+  /// ```
+  bool isSubscribedToTopic(String topic) {
+    if (!_isInitialized) {
+      debugPrint('⚠️ FCM Manager initialize edilmemiş');
+      return false;
+    }
+    
+    return _fcmService.isSubscribedToTopic(topic);
+  }
+
+  /// Tüm abone olunan topic'leri getirir
+  ///
+  /// **Returns:**
+  /// Set<String> - Abone olunan topic'lerin seti (boş set FCM initialize edilmemişse)
+  ///
+  /// **Example:**
+  /// ```dart
+  /// final subscribedTopics = FcmManager().getAllSubscribedTopics();
+  /// print('Abone olunan topic\'ler: $subscribedTopics');
+  /// 
+  /// if (subscribedTopics.isNotEmpty) {
+  ///   subscribedTopics.forEach((topic) {
+  ///     print('- $topic');
+  ///   });
+  /// }
+  /// ```
+  Set<String> getAllSubscribedTopics() {
+    if (!_isInitialized) {
+      debugPrint('⚠️ FCM Manager initialize edilmemiş');
+      return <String>{};
+    }
+    
+    return _fcmService.getAllSubscribedTopics();
+  }
+
+  /// Belirli topic'lere abone olup olmadığını kontrol eder
+  ///
+  /// **Parameters:**
+  /// - [topics]: Kontrol edilecek topic listesi
+  ///
+  /// **Returns:**
+  /// Map<String, bool> - Her topic için subscription durumu
+  ///
+  /// **Example:**
+  /// ```dart
+  /// final statuses = FcmManager().getTopicSubscriptionStatuses([
+  ///   'news', 'sports', 'weather', 'alerts'
+  /// ]);
+  /// 
+  /// statuses.forEach((topic, isSubscribed) {
+  ///   print('$topic: ${isSubscribed ? "Abone" : "Abone değil"}');
+  /// });
+  /// 
+  /// // Sadece abone olunan topic'leri filtrele
+  /// final subscribedOnly = statuses.entries
+  ///   .where((entry) => entry.value)
+  ///   .map((entry) => entry.key)
+  ///   .toList();
+  /// ```
+  Map<String, bool> getTopicSubscriptionStatuses(List<String> topics) {
+    if (!_isInitialized) {
+      debugPrint('⚠️ FCM Manager initialize edilmemiş');
+      return Map<String, bool>.fromIterable(topics, value: (_) => false);
+    }
+    
+    return _fcmService.getTopicSubscriptionStatuses(topics);
+  }
+
+  /// Abone olunan topic sayısını getirir
+  ///
+  /// **Returns:**
+  /// int - Abone olunan topic sayısı
+  ///
+  /// **Example:**
+  /// ```dart
+  /// final count = FcmManager().getSubscribedTopicCount();
+  /// print('Toplam $count topic\'e abone');
+  /// 
+  /// if (count >= 10) {
+  ///   print('⚠️ Çok fazla topic\'e abone olunmuş!');
+  /// }
+  /// ```
+  int getSubscribedTopicCount() {
+    return getAllSubscribedTopics().length;
+  }
+
+  /// Topic subscription durumunu detaylı rapor olarak getirir
+  ///
+  /// **Returns:**
+  /// Map<String, dynamic> - Detaylı subscription raporu
+  ///
+  /// **Example:**
+  /// ```dart
+  /// final report = FcmManager().getTopicSubscriptionReport();
+  /// print('Toplam topic sayısı: ${report['totalCount']}');
+  /// print('Abone olunan topic\'ler: ${report['topics']}');
+  /// print('Rapor zamanı: ${report['timestamp']}');
+  /// ```
+  Map<String, dynamic> getTopicSubscriptionReport() {
+    final topics = getAllSubscribedTopics();
+    
+    return {
+      'totalCount': topics.length,
+      'topics': topics.toList(),
+      'timestamp': DateTime.now().toIso8601String(),
+      'isInitialized': _isInitialized,
+    };
+  }
+
+  // ==================== TEST METHODS ====================
 
   /// Test amaçlı token refresh handler'ını test etmek için
   ///

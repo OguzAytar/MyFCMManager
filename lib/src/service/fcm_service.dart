@@ -11,6 +11,9 @@ class FcmService {
   static final FcmService _instance = FcmService._internal();
 
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
+  
+  // Topic subscription tracking için local cache
+  final Set<String> _subscribedTopics = <String>{};
 
   // Foreground bildirimleri için stream controller
   final StreamController<FcmMessage> _onMessageController = StreamController.broadcast();
@@ -86,6 +89,162 @@ class FcmService {
     } catch (e) {
       // Token silme hatası - sessizce devam et
     }
+  }
+
+  /// Bir topic'e abone ol
+  /// 
+  /// **Parameters:**
+  /// - [topic]: Abone olunacak topic adı
+  /// 
+  /// **Returns:**
+  /// true - Başarılı, false - Hatalı
+  /// 
+  /// **Example:**
+  /// ```dart
+  /// await fcmService.subscribeToTopic('news');
+  /// await fcmService.subscribeToTopic('weather-alerts');
+  /// ```
+  Future<bool> subscribeToTopic(String topic) async {
+    try {
+      await _firebaseMessaging.subscribeToTopic(topic);
+      _subscribedTopics.add(topic);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Bir topic'den abonelikten çık
+  /// 
+  /// **Parameters:**
+  /// - [topic]: Abonelikten çıkılacak topic adı
+  /// 
+  /// **Returns:**
+  /// true - Başarılı, false - Hatalı
+  /// 
+  /// **Example:**
+  /// ```dart
+  /// await fcmService.unsubscribeFromTopic('news');
+  /// ```
+  Future<bool> unsubscribeFromTopic(String topic) async {
+    try {
+      await _firebaseMessaging.unsubscribeFromTopic(topic);
+      _subscribedTopics.remove(topic);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Bir topic'e abone olup olmadığını kontrol eder (local cache)
+  /// 
+  /// **Parameters:**
+  /// - [topic]: Kontrol edilecek topic adı
+  /// 
+  /// **Returns:**
+  /// true - Abone, false - Abone değil
+  /// 
+  /// **Note:**
+  /// Bu metod local cache'i kontrol eder. Firebase'den gerçek zamanlı 
+  /// subscription durumu almaz çünkü Firebase böyle bir API sağlamaz.
+  /// 
+  /// **Example:**
+  /// ```dart
+  /// final isSubscribed = fcmService.isSubscribedToTopic('news');
+  /// if (isSubscribed) {
+  ///   print('News topic\'ine abone');
+  /// }
+  /// ```
+  bool isSubscribedToTopic(String topic) {
+    return _subscribedTopics.contains(topic);
+  }
+
+  /// Tüm abone olunan topic'leri getirir (local cache)
+  /// 
+  /// **Returns:**
+  /// Set<String> - Abone olunan topic'lerin seti
+  /// 
+  /// **Example:**
+  /// ```dart
+  /// final topics = fcmService.getAllSubscribedTopics();
+  /// print('Abone olunan topic\'ler: $topics');
+  /// ```
+  Set<String> getAllSubscribedTopics() {
+    return Set<String>.from(_subscribedTopics);
+  }
+
+  /// Belirli topic'lere abone olup olmadığını kontrol eder
+  /// 
+  /// **Parameters:**
+  /// - [topics]: Kontrol edilecek topic listesi
+  /// 
+  /// **Returns:**
+  /// Map<String, bool> - Her topic için subscription durumu
+  /// 
+  /// **Example:**
+  /// ```dart
+  /// final statuses = fcmService.getTopicSubscriptionStatuses([
+  ///   'news', 'sports', 'weather'
+  /// ]);
+  /// // {'news': true, 'sports': false, 'weather': true}
+  /// ```
+  Map<String, bool> getTopicSubscriptionStatuses(List<String> topics) {
+    final Map<String, bool> statuses = {};
+    for (final topic in topics) {
+      statuses[topic] = isSubscribedToTopic(topic);
+    }
+    return statuses;
+  }
+
+  /// Topic cache'ini temizler (logout için)
+  /// 
+  /// **Example:**
+  /// ```dart
+  /// fcmService.clearTopicCache();
+  /// ```
+  void clearTopicCache() {
+    _subscribedTopics.clear();
+  }
+
+  /// Birden fazla topic'e aynı anda abone ol
+  /// 
+  /// **Parameters:**
+  /// - [topics]: Abone olunacak topic listesi
+  /// 
+  /// **Returns:**
+  /// Map<String, bool> - Her topic için başarı durumu
+  /// 
+  /// **Example:**
+  /// ```dart
+  /// final results = await fcmService.subscribeToMultipleTopics([
+  ///   'news', 'sports', 'weather'
+  /// ]);
+  /// ```
+  Future<Map<String, bool>> subscribeToMultipleTopics(List<String> topics) async {
+    final Map<String, bool> results = {};
+    
+    for (final topic in topics) {
+      results[topic] = await subscribeToTopic(topic);
+    }
+    
+    return results;
+  }
+
+  /// Birden fazla topic'ten aynı anda abonelikten çık
+  /// 
+  /// **Parameters:**
+  /// - [topics]: Abonelikten çıkılacak topic listesi
+  /// 
+  /// **Returns:**
+  /// Map<String, bool> - Her topic için başarı durumu
+  Future<Map<String, bool>> unsubscribeFromMultipleTopics(List<String> topics) async {
+    final Map<String, bool> results = {};
+    
+    for (final topic in topics) {
+      results[topic] = await unsubscribeFromTopic(topic);
+    }
+    
+    return results;
   }
 
   // RemoteMessage'dan FcmMessage'a dönüştürme

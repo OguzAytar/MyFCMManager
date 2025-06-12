@@ -39,3 +39,38 @@ abstract class FcmPreferencesHandler {
   /// Notification preferences güncellendiğinde çağrılır
   Future<bool> onUpdatePreferences({required bool enabled, List<String>? categories, Map<String, bool>? channelSettings});
 }
+
+/// FCM topic management için interface
+abstract class FcmTopicHandler {
+  /// Topic'e abone olduğunda çağrılır
+  /// 
+  /// **Parameters:**
+  /// - [topic]: Abone olunan topic adı
+  /// - [success]: Abonelik işleminin başarı durumu
+  /// 
+  /// **Example:**
+  /// ```dart
+  /// @override
+  /// Future<void> onTopicSubscribed(String topic, bool success) async {
+  ///   if (success) {
+  ///     // Backend'e kaydet, analytics gönder
+  ///     await saveTopicSubscriptionToBackend(topic);
+  ///   }
+  /// }
+  /// ```
+  Future<void> onTopicSubscribed(String topic, bool success);
+
+  /// Topic'ten abonelikten çıktığında çağrılır
+  /// 
+  /// **Parameters:**
+  /// - [topic]: Abonelikten çıkılan topic adı
+  /// - [success]: Abonelikten çıkma işleminin başarı durumu
+  Future<void> onTopicUnsubscribed(String topic, bool success);
+
+  /// Bulk topic işlemleri sonrasında çağrılır
+  /// 
+  /// **Parameters:**
+  /// - [results]: Her topic için işlem sonuçları
+  /// - [isSubscription]: true=abonelik, false=abonelikten çıkma
+  Future<void> onBulkTopicOperation(Map<String, bool> results, bool isSubscription);
+}
